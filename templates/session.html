@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+      <!-- Bootstrap CSS -->
+      <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+      <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+
+    <title>Session - Grocery Splitter</title>
+    <script type="text/javascript">
+
+    window.onload = function() {
+            var currentSessionId = "{{ session_id }}";
+            if (!isValidSession(getCookie("user_session"), currentSessionId)) {
+                var username = prompt("Please enter your username:");
+                if (username) {
+                    joinSession(username, currentSessionId);
+                }
+            } else {
+                fetchSessionDataAndBuildTable(currentSessionId); // Fetch data and build table
+                socket.emit('join', { 'session_id': currentSessionId });
+            }
+        };
+
+// function triggerJoinSession() {
+//     var username = document.getElementById('username').value;
+//     if (username) {
+//         joinSession(username, "{{ session_id }}");
+//     }
+  
+// }
+
+
+        function joinSession(username, session_id) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", `/join_session/${session_id}`, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    document.cookie = `user_session=${username}_${session_id}`;
+                    fetchSessionDataAndBuildTable(session_id); // Fetch data and build table
+                }
+            };
+            xhr.send(`username=${encodeURIComponent(username)}`);
+        }
+
+        function fetchSessionDataAndBuildTable(sessionId) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", `/get_session_data/${sessionId}`, true);
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE) {
+                    if (this.status == 200) {
+                        var responseData = JSON.parse(this.responseText);
+                        var users = responseData.users;
+                        var items = responseData.items;
+                        
+                        console.log("items in fetchSessionDataAndBuildTable", items);
+                        var splits = responseData.splits;
+                        var localUsers = responseData.local_users;
+                        if (!localUsers)
+                        {
+                            console.log("localUsers is undefined in fetchSessionDataAndBuildTable")
+                        }
+
+                        buildTable(users, items, splits, localUsers);
+                    } else {
+                        console.error("Failed to fetch session data:", this.statusText);
+                        // Handle the error appropriately
+                    }
+                }
+            };
+            xhr.send();
+        }
+
+    
+    function isValidSession(cookieValue, currentSessionId) {
+        if (!cookieValue) {
+            return false;
+        }
+        var parts = cookieValue.split('_');
+        var cookieSessionId = parts[parts.length - 1]; // Assuming last part is the session ID
+        return cookieSessionId === currentSessionId;
+    }
+
+    function getCookie(cookieName) {
+        var name = cookieName + "=";
+        var decodedCookie = decodeURIComponent(document.cookie);
+        var ca = decodedCookie.split(';');
+        for(var i = 0; i < ca.length; i++) {
+            var c = ca[i];
+            while (c.charAt(0) == ' ') {
+                c = c.substring(1);
+            }
+            if (c.indexOf(name) == 0) {
+                return c.substring(name.length, c.length);
+            }
+        }
+        return "";
+    }
+
+    var socket = io.connect('http://' + document.domain + ':' + location.port);
+    socket.on('item_updated', function(data) {
+        updateItemInTable(data.itemId, data.newName);
+    });
+    socket.on('local_user_added', function(data) {
+    // Logic to handle the addition of a local user
+        fetchSessionDataAndBuildTable("{{ session_id }}");
+    });
+
+    socket.on('local_user_selection_updated', function(data) {
+        // Logic to handle the update of a local user's selections
+
+        updateCheckboxState(data.username, data.item_index, data.is_selected, true);
+    
+        console.log('local user selection updated',data.username, data.item_index, data.is_selected, true);
+    });
+
+    socket.on('item_added', function(data) {
+        console.log("New item added:", data.newItem);
+        fetchSessionDataAndBuildTable("{{ session_id }}");
+    });
+
+
+
+    function updateItemInTable(itemId, newName) {
+        // Find the table row with the itemId and update its name
+        var rows = document.querySelectorAll('table tr');
+        rows.forEach(function(row) {
+            if (row.dataset.itemId == itemId) {
+                var nameCell = row.cells[0]; // Assuming the first cell is the item name
+                if (nameCell && nameCell.querySelector('input')) {
+                    nameCell.querySelector('input').value = newName; // Update the input value
+                }
+            }
+        });
+    }
+
+    socket.on('update_data', function(data) {
+        // Update the users and splits data
+        console.log("Received update_data event in socked on update_data:", data);
+
+        buildTable(data.users, data.items, data.splits, data.local_users);
+    });
+    
+    socket.on('selection_updated', function(data) {
+        console.log("Received selection_updated event:", data);
+        updateCheckboxState(data.username, data.item_index, data.is_selected);
+    });
+
+    function updateCheckboxState(username, itemIndex, isSelected) {
+            // Find the table containing the checkboxes
+            var table = document.querySelector('#mainTable'); // Adjust this selector based on your actual table's class or id
+
+            // Iterate over the rows of the table
+            var rows = table.rows;
+            console.log(rows);
+            for (var i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
+                var row = rows[i];
+
+                // Assuming the first cell is the item name and the rest are checkboxes
+                // Find the cell that corresponds to the given itemIndex and username
+                if (row.dataset.itemId == itemIndex) { // Ensure each row has a data-item-id attribute set to the item's ID
+                    var cells = row.cells;
+                    for (var j = 1; j < cells.length; j++) { // Start from 1 to skip the item name cell
+                        var cell = cells[j];
+                        if (cell.dataset.username == username) { // Ensure each cell has a data-username attribute set to the user's name
+                            var checkbox = cell.querySelector('input[type="checkbox"]');
+                            if (checkbox) {
+                                checkbox.checked = isSelected;
+                                break; // Break the loop once the correct checkbox is found and updated
+                            }
+                        }
+                    }
+                }
+            }
+            console.log(`Updating checkbox for ${username}, item ${itemIndex}: ${isSelected}`);
+        }
+
+        function buildTable(users, items, splits, localUsers) {
+            // Identify the current user and admin status
+            if (!localUsers)
+            {
+                console.log("localUsers is undefined in buildTable")
+            }
+
+            var currentUser = getCurrentUser();
+            var isAdmin = {{ 'true' if is_admin else 'false' }};
+
+            // find and add items and users in the main table 
+            var mainTable = document.querySelector('#mainTable');
+            
+            mainTable.innerHTML = '';
+            console.log('inside buildtable');
+            populateItemSelectionTable(mainTable, items, users, localUsers, currentUser, isAdmin);
+           
+
+            // find and add items and users in the side table 
+            var splitsTable = document.querySelector('#sideTable');
+            console.log(
+                splitsTable
+            );
+            
+            populateSplitsTable(splitsTable, splits);
+            
+
+            // Add admin controls if the current user is an admin
+            if (isAdmin) {
+                addAdminControls(mainTable, "{{ session_id }}");
+            }
+        }
+
+
+        function populateItemSelectionTable(table, items, users, localUsers, currentUser, isAdmin) {
+            if (!users) {
+                console.error('Users data is undefined or null');
+                return;
+            }
+            if (!localUsers) {
+                console.error('localUsers data is undefined or null in populateItemSelectionTable');
+                return;
+            }
+
+            if (!items || !Array.isArray(items)) {
+                console.error('Invalid or undefined items data');
+                return;
+            }
+
+            if (!users || !items || !Array.isArray(items)) {
+                console.error('Invalid or undefined data in populateItemSelectionTable');
+                return;
+            }
+           
+            var header = table.tHead;
+            if (!header) {
+                // If not, create a new <thead> element
+                header = document.createElement('thead');
+                header.className = 'thead'; // Set the class name
+
+                // Append the <thead> to the table
+                table.appendChild(header);
+            }
+
+            // Now you can add rows and cells to the header as needed
+            var headerRow = header.insertRow(0);
+            headerRow.insertCell(0).innerHTML = 'Item'; // First column for item names
+            headerRow.insertCell(1).innerHTML = 'Price'; // Second column for prices
+            
+
+
+            // Add user columns to the header
+            Object.keys(users).forEach(function(user, index) {
+                headerRow.insertCell(index + 2).innerHTML = user;
+            });
+
+            
+            console.log('inside populateitem');
+
+                   // Add item rows
+            
+            items.forEach(function(item, itemIndex) {
+                var row = table.insertRow(itemIndex + 1);
+                row.insertCell(0).innerHTML = item.Name; // Item name
+                var priceCell = row.insertCell(1);       // Price cell
+                priceCell.innerHTML = item.Price; 
+                // Add checkboxes for each user
+            Object.keys(users).forEach(function(user, userIndex) {
+                var cell = row.insertCell(userIndex + 2);
+                cell.dataset.username = user;
+                var wrapperDiv = document.createElement('div');
+                wrapperDiv.className = 'checkbox-wrapper-13'; // Use your desired class name here
+
+                var checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'checkbox-hover'; // Additional class for the checkbox, if needed
+                checkbox.checked = users[user][itemIndex] === 1;
+                checkbox.disabled = !(user === currentUser);
+                checkbox.onchange = function() {
+                        updateSelection(user, itemIndex, checkbox.checked);
+                    };
+                // checkbox.dataset.user = user;
+                // checkbox.dataset.itemIndex = itemIndex;
+
+                wrapperDiv.appendChild(checkbox);
+                cell.appendChild(wrapperDiv);
+            });
+          
+
+        });
+
+            // Add checkboxes for each local user
+            Object.keys(localUsers).forEach(function(user, index) {
+                var userIndex = Object.keys(users).length + index;
+                headerRow.insertCell(userIndex + 2).innerHTML = user; // Add local user to the header
+
+                items.forEach(function(item, itemIndex) {
+                var row = table.rows[itemIndex + 1];
+                var cell = row.insertCell(userIndex + 2);
+                cell.dataset.username = user;
+                var wrapperDiv = document.createElement('div');
+                wrapperDiv.className = 'checkbox-wrapper-13';
+
+                var checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'checkbox-hover';
+                checkbox.checked = localUsers[user][itemIndex] === 1;
+                checkbox.disabled = !isAdmin;
+                
+                checkbox.onchange = function() {
+                    updateSelection(user, itemIndex, checkbox.checked, true); // Update for local user
+                };
+                    
+                
+                wrapperDiv.appendChild(checkbox);
+                cell.appendChild(wrapperDiv);
+                });
+            });     
+            if (isAdmin) {
+                       
+                        makeFieldsEditable(table, items);
+                    }
+                }
+               
+            
+
+
+        function makeFieldsEditable(table, items) {
+            var rows = table.rows;
+
+            for (var i = 1; i < rows.length; i++) { // Start from 1 to skip the header row
+                var item = items[i - 1]; // Adjust index for zero-based array
+
+                // Make item name editable
+                var nameCell = rows[i].cells[0]; // Assuming the first cell is the item name
+                nameCell.innerHTML = `<input type="text" value="${item.Name}"   class="form-control item-name"  style= "background: #1e1e1e;color: #FFF; border-color:#1e1e1e" onchange="updateItemName(${item.ID}, this.value)">`;
+                // Make item price editable
+                var priceCell = rows[i].cells[1]; // Assuming the second cell is the item price
+                priceCell.innerHTML = `<input type="number" value="${item.Price}" step="0.01"  class="form-control item-price"  style= "background: #1e1e1e;color: #FFF; border-color:#1e1e1e" onchange="updateItemPrice(${item.ID}, this.value)">`;
+
+                // Make item price editable
+                // Assuming you add a price column in your table, you'll need to adjust the cell index
+                // var priceCell = rows[i].cells[1]; // Adjust cell index based on your table structure
+                // priceCell.innerHTML = `<input type="number" value="${item["Final Price"]}" step="0.01" onchange="updateItemPrice(${item.ID}, this.value)">`;
+            }
+        }
+
+        function updateItemName(itemId, newName) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", '/update_item_name', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("Item name updated successfully");
+                    // Optionally, emit a socket event to update all clients
+                    socket.emit('item_updated', {itemId: itemId, newName: newName});
+                }
+            };
+
+            xhr.send("session_id=" + encodeURIComponent("{{ session_id }}") + "&itemId=" + encodeURIComponent(itemId) + "&newName=" + encodeURIComponent(newName));
+        }
+        function updateItemPrice(itemId, newPrice) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", '/update_item_price', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("Item price updated successfully");
+                    // Optionally, emit a socket event to update all clients
+                    socket.emit('item_price_updated', {itemId: itemId, newPrice: newPrice});
+                }
+            };
+
+            xhr.send("session_id=" + encodeURIComponent("{{ session_id }}") + "&itemId=" + encodeURIComponent(itemId) + "&newPrice=" + encodeURIComponent(newPrice));
+        }
+
+
+        function addAdminControls(container, sessionId) {
+            // Select the existing 'Add User' and 'Add Item' buttons
+            var addUserBtn = document.querySelector('#addUserBtn');
+            var addItemBtn = document.querySelector('#addItemBtn');
+            addUserBtn.onclick = function() {
+                var localUsername = prompt("Enter local user name:");
+                if (localUsername) {
+                    addLocalUser(sessionId, localUsername);
+                }
+            };
+
+           
+
+            if (addItemBtn) {
+                addItemBtn.onclick = function() {
+                    addNewItem("{{ session_id }}");
+                };
+            }
+            // Additional admin controls can be added here
+        }
+
+        function addNewItem(sessionId) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", `/add_item/${sessionId}`, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("New item added successfully");
+                    fetchSessionDataAndBuildTable(sessionId); // Fetch updated data and rebuild table
+                } else if (this.readyState == XMLHttpRequest.DONE) {
+                    console.error("Failed to add new item:", this.statusText);
+                }
+            };
+            xhr.send();
+        }
+
+
+        function addLocalUser(sessionId, localUsername) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", `/add_local_user/${sessionId}`, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("Local user added successfully");
+                    fetchSessionDataAndBuildTable(sessionId); // Rebuild table to include new local user
+                } else if (this.readyState == XMLHttpRequest.DONE) {
+                    console.error("Failed to add local user:", this.statusText);
+                }
+            };
+
+            xhr.send(`local_username=${encodeURIComponent(localUsername)}`);
+        }
+
+
+      
+        function populateSplitsTable(table, splits) {
+            table.innerHTML = '';
+            
+            var header = table.createTHead();
+            var splitsHeaderRow = header.insertRow(0);
+            splitsHeaderRow.insertCell(0).innerHTML = 'User';
+            splitsHeaderRow.insertCell(1).innerHTML = 'Total Cost';
+
+
+            
+           
+            // Add rows for each user's split
+            Object.keys(splits).forEach(function(user) {
+                var row = table.insertRow(-1);
+                row.insertCell(0).innerHTML = user;
+                row.insertCell(1).innerHTML = `$${splits[user].toFixed(2)}`;
+            });
+        }
+
+
+
+
+        function getCurrentUser() {
+            var cookieValue = getCookie('user_session');
+            if (cookieValue) {
+                var parts = cookieValue.split('_');
+                if (parts.length > 1) {
+                    return parts[0]; // Assuming the username is before the underscore
+                }
+            }
+            return null; // Return null or handle appropriately if the cookie is not set
+        }
+
+        function updateSelection(user, itemIndex, isSelected, isLocalUser = false) {
+            var xhr = new XMLHttpRequest();
+            var endpoint = isLocalUser ? '/update_local_user_selection/' : '/update_selection/';
+            xhr.open("POST", endpoint + "{{ session_id }}", true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("Selection updated successfully");
+                }
+            };
+
+            var data = "username=" + encodeURIComponent(user) +
+                    "&item_index=" + encodeURIComponent(itemIndex) +
+                    "&is_selected=" + encodeURIComponent(isSelected) +
+                    (isLocalUser ? "&is_local_user=true" : "");
+            xhr.send(data);
+        }
+
+
+
+
+        // Existing getCookie function ...
+    </script>
+</head>
+<body>
+    <!-- Existing HTML content -->
+
+          <!-- ====== Enter Username Start ====== -->
+    <div class="modal fade" id="loginModal" tabindex="-1" role="dialog" aria-labelledby="loginModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">Enter Your Username</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="username" class="form-control" placeholder="Username">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="triggerJoinSession()">Join Session</button>
+                </div>
+            </div>
+        </div>
+    </div>
+     <!-- ====== Enter Username End ====== -->
+
+
+
+     <!-- Main Table-->
+
+
+     <div class="row" style="margin: 20px;">
+        <div class="col-lg-8">
+        <div class="header-with-buttons">
+            <h4 style="color: white;">Grocery Bill</h4>
+            <div class="buttons-container">
+                <button type="button" id="addUserBtn" class="btn btn-outline-primary">Add User</button>
+                <button type="button" id="addItemBtn" class="btn btn-outline-secondary">Add Item</button>
+            </div>
+        </div>
+     
+        <div class="table-responsive">
+    <table id="mainTable" style="color: white;" class="table table-bordered text-center MainTable custom-scrollable">
+        <!-- <thead class="thead">
+            <tr>
+                
+                <th scope="col">Items</th>
+                <th scope="col">Prices</th>
+               
+            </tr>
+        </thead> -->
+        <tbody>
+          
+           
+    
+            
+        </tbody>
+    </table>
+    </div>
+    </div>
+    
+     <!-- Main Table END-->
+    
+     <!-- Side Table Start-->
+    
+    <div class="col-lg-4">
+    <div class="header-cost">
+        <h4 style="color: white;">Total Cost</h4>
+        </div>
+        <table id="sideTable" style="color: white;" class="table table-bordered SideTable text-center">
+            
+        </table>
+        </div>
+    
+    </div>
+
+
+     <!-- Side Table END-->
+
+
+
+    
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+           // Select all td elements that contain a checkbox
+        var cells = document.querySelectorAll('td');
+    
+    cells.forEach(function(cell) {
+        cell.addEventListener('click', function(event) {
+            // Check if the clicked element is the checkbox itself
+            if (event.target.classList.contains('checkbox-hover')) {
+                // Do nothing, let the default checkbox behavior handle it
+                return;
+            }
+    
+            // Find the checkbox within the clicked cell
+            var checkbox = this.querySelector('.checkbox-hover');
+            if (checkbox) {
+                // Toggle the checkbox
+                checkbox.checked = !checkbox.checked;
+            }
+        });
+    });
+    });
+    
+        
+        </script>
+</body>
+<style>
+    .tables-container {
+        display: flex;
+        justify-content: space-around;
+    }
+    .tables-container table {
+        margin: 10px;
+        border-collapse: collapse;
+    }
+    .tables-container table, .tables-container th, .tables-container td {
+        border: 1px solid black;
+    }
+    .tables-container th, .tables-container td {
+        padding: 5px;
+    }
+
+
+
+    body {
+        background-color: #1e1e1e;
+    }
+    .table-bordered, .table-bordered th, .table-bordered td {
+    border: 1px solid lightgray !important; /* Override with your preferred color */
+}
+
+/* Ensure the internal borders of the table are also styled */
+.table-bordered th, .table-bordered td {
+    border-color: #2c2c2c !important;
+}
+
+
+    .header-cost {
+        width: 100%; /* Ensures the container takes full width */
+    margin-bottom: 38px; 
+    }
+   
+   .header-with-buttons {
+    display: flex;
+    justify-content: space-between; /* Adjusts the space distribution */
+    align-items: center;
+    width: 100%; /* Ensures the container takes full width */
+    
+    margin-bottom: 20px; 
+}
+
+
+.header-with-buttons h4 {
+    align-items: center;
+    margin-top: 10px;
+}
+
+.buttons-container {
+    display: flex;
+    gap: 10px;
+}
+
+.header-with-buttons button {
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.flex-container {
+    align-items: flex-start; 
+    justify-content: flex-start;
+   /* display: flex;
+    justify-content: flex-start;  Aligns items to the start, preventing stretching 
+    
+    Prevents vertical stretching of the tables */
+}
+
+.table-container {
+    overflow-x: auto; /* Enables horizontal scrolling */
+    margin-right: 20px; /* Adds some space between the tables */
+}
+
+
+.table tbody th,
+.table tbody td {
+    color: white; /* Example color for table items - change as needed */
+}
+
+/* Style for table border color */
+.table {
+    border-color: #2c2c2c; /* Example color for table border - change as needed */
+}
+
+/* Style for table header background and text color */
+.table thead th {
+     /* Example color for table header background */
+    color: white; /* Color for text in table headers */
+}
+
+.custom-scrollable {
+        /* Horizontal scroll on smaller screens */
+        overflow-x: scroll;
+    }
+.table thead th:first-child,
+.table tbody th:first-child {
+    position: sticky;
+    left: 0;
+     /* Or your desired background color */
+    z-index: 1;
+}
+
+.table tbody th:first-child{
+    background-color: #1e1e1e;
+}
+
+@media screen and (max-width: 768px) {
+    .custom-scrollable {
+        /* Horizontal scroll on smaller screens */
+        overflow-x: scroll;
+    }
+}
+
+
+
+
+  
+
+
+  @supports (-webkit-appearance: none) or (-moz-appearance: none) {
+    .checkbox-wrapper-13 input[type=checkbox] {
+      --active: #275EFE;
+      --active-inner: #fff;
+      --focus: 2px rgba(39, 94, 254, .3);
+      --border: #202122;
+      --border-hover: #275EFE;
+      --background: #606062;
+      --disabled: #2c2d2e;
+      --disabled-inner: #202122;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      height: 21px;
+      outline: none;
+      display: inline-block;
+      vertical-align: top;
+      position: relative;
+      margin: 0;
+      cursor: pointer;
+      border: 1px solid var(--bc, var(--border));
+      background: var(--b, var(--background));
+      transition: background 0.3s, border-color 0.3s, box-shadow 0.2s;
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:after {
+      content: "";
+      display: block;
+      left: 0;
+      top: 0;
+      position: absolute;
+      transition: transform var(--d-t, 0.3s) var(--d-t-e, ease), opacity var(--d-o, 0.2s);
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:checked {
+      --b: var(--active);
+      --bc: var(--active);
+      --d-o: .3s;
+      --d-t: .6s;
+      --d-t-e: cubic-bezier(.2, .85, .32, 1.2);
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:disabled {
+      --b: var(--disabled);
+      cursor: not-allowed;
+      opacity: 0.9;
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:disabled:checked {
+      --b: var(--disabled-inner);
+      --bc: var(--border);
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:disabled + label {
+      cursor: not-allowed;
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:hover:not(:checked):not(:disabled) {
+      --bc: var(--border-hover);
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:focus {
+      box-shadow: 0 0 0 var(--focus);
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:not(.switch) {
+      width: 21px;
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:not(.switch):after {
+      opacity: var(--o, 0);
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:not(.switch):checked {
+      --o: 1;
+    }
+    .checkbox-wrapper-13 input[type=checkbox] + label {
+      display: inline-block;
+      vertical-align: middle;
+      cursor: pointer;
+      margin-left: 4px;
+    }
+
+    .checkbox-wrapper-13 input[type=checkbox]:not(.switch) {
+      border-radius: 7px;
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:not(.switch):after {
+      width: 5px;
+      height: 9px;
+      border: 2px solid var(--active-inner);
+      border-top: 0;
+      border-left: 0;
+      left: 7px;
+      top: 4px;
+      transform: rotate(var(--r, 20deg));
+    }
+    .checkbox-wrapper-13 input[type=checkbox]:not(.switch):checked {
+      --r: 43deg;
+    }
+  }
+
+  .checkbox-wrapper-13 * {
+    box-sizing: inherit;
+  }
+  .checkbox-wrapper-13 *:before,
+  .checkbox-wrapper-13 *:after {
+    box-sizing: inherit;
+  }
+
+  @media screen and (max-width: 768px) {
+     .header-with-buttons h4, .header-cost h4 {
+        font-size: medium; /* Makes header text smaller on small screens */
+    } 
+
+    .buttons-container button {
+        padding: 3px 6px; /* Smaller padding for buttons */
+        font-size: smaller; /* Smaller font size for button text */
+    }
+}
+.custom-scrollable {
+        /* Horizontal scroll on smaller screens */
+        overflow-x: scroll;
+    }
+.table thead th:first-child,
+.table tbody th:first-child {
+    position: sticky;
+    left: 0;
+     /* Or your desired background color */
+    z-index: 1;
+}
+
+.table tbody th:first-child{
+    background-color: #1e1e1e;
+}
+
+@media screen and (max-width: 768px) {
+    .custom-scrollable {
+        /* Horizontal scroll on smaller screens */
+        overflow-x: scroll;
+    }
+}
+</style>
+
+
+</html>

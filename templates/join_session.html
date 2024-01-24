@@ -1,0 +1,133 @@
+<!---
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Join Session - Grocery Splitter</title>
+</head>
+<body>
+    <h1>Join Grocery Session</h1>
+    <form action="/join_session/{{ session_id }}" method="post">
+        <input type="text" name="username" placeholder="Enter Username" required>
+        <input type="submit" value="Join Session">
+    </form>
+</body>
+</html>
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Responsive Bill Split Invitation</title>
+<style>
+  body, html {
+    height: 100%;
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    background-image: url('../static/assets/images/background_image.jpg');
+    background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+   
+
+    
+  }
+ 
+  
+  .invite-container {
+    background: #25282E;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.2);
+    width: 80vw; /* Adjusts to the width of the screen */
+    max-width: 350px; /* Maximum width */
+    text-align: center;
+  }
+  
+  .invite-header {
+    color: white;
+    margin-bottom: 20px;
+  }
+  
+  .invite-link {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8rem;
+    margin-bottom: 10px;
+  }
+  
+  .invite-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+  }
+  
+  .invite-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  
+  .input-field {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    stroke-width: 1.19;
+    
+  }
+  
+  .join-btn {
+    background: #1F78FF;
+    color: white;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 600px) {
+    .invite-container {
+      width: 95vw;
+    }
+    
+    .invite-header {
+      font-size: 4vw;
+    }
+  }
+</style>
+</head>
+<body>
+  
+<div class="invite-container">
+  <div class="invite-header">
+    <div class="invite-link">Invite Link</div>
+    <div class="invite-title">You’ve been invited to join this bill split</div>
+  </div>
+  <form action="/join_session/{{ session_id }}" method="post">
+  <div class="invite-form">
+    <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 14.24px;">
+      <div style="display: flex; width: 100%; padding: 0; align-items: center; gap: 14.24px;">
+        <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start; gap: 4.75px;">
+          <input type="text" name="username" placeholder="Enter Your Username" required style="flex-grow: 1; padding: 14.24px; border-radius: 7.12px; border: 1.19px solid rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.72); font-size: 15.43px; font-family: 'Poppins', sans-serif; font-weight: 500; line-height: 21.36px; background: transparent; outline: none;">
+        </div>
+      </div>
+    
+      
+    </div>
+    <button type="submit" value="Join Session" class="join-btn">Join Bill Split</button>
+  </div>
+</form>
+</div>
+
+</body>
+</html>
