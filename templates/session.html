@@ -57,16 +57,11 @@
                         var responseData = JSON.parse(this.responseText);
                         var users = responseData.users;
                         var items = responseData.items;
-                        
-                        console.log("items in fetchSessionDataAndBuildTable", items);
                         var splits = responseData.splits;
-                        var localUsers = responseData.local_users;
-                        if (!localUsers)
-                        {
-                            console.log("localUsers is undefined in fetchSessionDataAndBuildTable")
-                        }
-
-                        buildTable(users, items, splits, localUsers);
+                        console.log("items in fetchSessionDataAndBuildTable", items);
+                        
+                       
+                        buildTable(users, items, splits);
                     } else {
                         console.error("Failed to fetch session data:", this.statusText);
                         // Handle the error appropriately
@@ -143,12 +138,12 @@
         // Update the users and splits data
         console.log("Received update_data event in socked on update_data:", data);
 
-        buildTable(data.users, data.items, data.splits, data.local_users);
+        buildTable(data.users, data.items, data.splits);
     });
     
     socket.on('selection_updated', function(data) {
         console.log("Received selection_updated event:", data);
-        updateCheckboxState(data.username, data.item_index, data.is_selected);
+        updateCheckboxState(data.username, data.item_index, data.is_selected, data.userId);
     });
 
     function updateCheckboxState(username, itemIndex, isSelected) {
@@ -167,7 +162,7 @@
                     var cells = row.cells;
                     for (var j = 1; j < cells.length; j++) { // Start from 1 to skip the item name cell
                         var cell = cells[j];
-                        if (cell.dataset.username == username) { // Ensure each cell has a data-username attribute set to the user's name
+                        if (cell.dataset.userId == userId) { // Ensure each cell has a data-username attribute set to the user's name
                             var checkbox = cell.querySelector('input[type="checkbox"]');
                             if (checkbox) {
                                 checkbox.checked = isSelected;
@@ -177,15 +172,12 @@
                     }
                 }
             }
-            console.log(`Updating checkbox for ${username}, item ${itemIndex}: ${isSelected}`);
+            console.log(`Updating checkbox for ${username}, (ID: ${userId}), item ${itemIndex}: ${isSelected}`);
         }
 
-        function buildTable(users, items, splits, localUsers) {
+        function buildTable(users, items, splits) {
             // Identify the current user and admin status
-            if (!localUsers)
-            {
-                console.log("localUsers is undefined in buildTable")
-            }
+           
 
             var currentUser = getCurrentUser();
             var isAdmin = {{ 'true' if is_admin else 'false' }};
@@ -195,7 +187,7 @@
             
             mainTable.innerHTML = '';
             console.log('inside buildtable');
-            populateItemSelectionTable(mainTable, items, users, localUsers, currentUser, isAdmin);
+            populateItemSelectionTable(mainTable, items, users, currentUser, isAdmin);
            
 
             // find and add items and users in the side table 
@@ -214,15 +206,12 @@
         }
 
 
-        function populateItemSelectionTable(table, items, users, localUsers, currentUser, isAdmin) {
+        function populateItemSelectionTable(table, items, users, currentUser, isAdmin) {
             if (!users) {
                 console.error('Users data is undefined or null');
                 return;
             }
-            if (!localUsers) {
-                console.error('localUsers data is undefined or null in populateItemSelectionTable');
-                return;
-            }
+           
 
             if (!items || !Array.isArray(items)) {
                 console.error('Invalid or undefined items data');
@@ -249,37 +238,41 @@
             headerRow.insertCell(0).innerHTML = 'Item'; // First column for item names
             headerRow.insertCell(1).innerHTML = 'Price'; // Second column for prices
             
+             // Sort users by ID
+             const sortedUsers = Object.entries(users).sort((a, b) => a[1].id - b[1].id);
 
 
             // Add user columns to the header
-            Object.keys(users).forEach(function(user, index) {
-                headerRow.insertCell(index + 2).innerHTML = user;
-            });
+            // Object.keys(users).forEach(function(user, index) {
+            //     headerRow.insertCell(index + 2).innerHTML = user;
+            // });
+            sortedUsers.forEach(([username, userData]) => {
+                headerRow.insertCell().innerHTML = username;
 
-            
+            });
             console.log('inside populateitem');
 
                    // Add item rows
             
             items.forEach(function(item, itemIndex) {
-                var row = table.insertRow(itemIndex + 1);
-                row.insertCell(0).innerHTML = item.Name; // Item name
-                var priceCell = row.insertCell(1);       // Price cell
+                var row = table.insertRow();
+                row.insertCell().innerHTML = item.Name; // Item name
+                var priceCell = row.insertCell();       // Price cell
                 priceCell.innerHTML = item.Price; 
                 // Add checkboxes for each user
-            Object.keys(users).forEach(function(user, userIndex) {
-                var cell = row.insertCell(userIndex + 2);
-                cell.dataset.username = user;
+            sortedUsers.forEach(function([username, userData]) {
+                var cell = row.insertCell();
+                cell.dataset.username = username;
                 var wrapperDiv = document.createElement('div');
                 wrapperDiv.className = 'checkbox-wrapper-13'; // Use your desired class name here
 
                 var checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'checkbox-hover'; // Additional class for the checkbox, if needed
-                checkbox.checked = users[user][itemIndex] === 1;
-                checkbox.disabled = !(user === currentUser);
+                checkbox.checked =  userData.selections[itemIndex] === 1;
+                checkbox.disabled = !(username === currentUser || (isAdmin && userData.is_local));
                 checkbox.onchange = function() {
-                        updateSelection(user, itemIndex, checkbox.checked);
+                        updateSelection(username, itemIndex, checkbox.checked);
                     };
                 // checkbox.dataset.user = user;
                 // checkbox.dataset.itemIndex = itemIndex;
@@ -292,32 +285,32 @@
         });
 
             // Add checkboxes for each local user
-            Object.keys(localUsers).forEach(function(user, index) {
-                var userIndex = Object.keys(users).length + index;
-                headerRow.insertCell(userIndex + 2).innerHTML = user; // Add local user to the header
+            // Object.keys(localUsers).forEach(function(user, index) {
+            //     var userIndex = Object.keys(users).length + index;
+            //     headerRow.insertCell(userIndex + 2).innerHTML = user; // Add local user to the header
 
-                items.forEach(function(item, itemIndex) {
-                var row = table.rows[itemIndex + 1];
-                var cell = row.insertCell(userIndex + 2);
-                cell.dataset.username = user;
-                var wrapperDiv = document.createElement('div');
-                wrapperDiv.className = 'checkbox-wrapper-13';
+            //     items.forEach(function(item, itemIndex) {
+            //     var row = table.rows[itemIndex + 1];
+            //     var cell = row.insertCell(userIndex + 2);
+            //     cell.dataset.username = user;
+            //     var wrapperDiv = document.createElement('div');
+            //     wrapperDiv.className = 'checkbox-wrapper-13';
 
-                var checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'checkbox-hover';
-                checkbox.checked = localUsers[user][itemIndex] === 1;
-                checkbox.disabled = !isAdmin;
+            //     var checkbox = document.createElement('input');
+            //     checkbox.type = 'checkbox';
+            //     checkbox.className = 'checkbox-hover';
+            //     checkbox.checked = localUsers[user][itemIndex] === 1;
+            //     checkbox.disabled = !isAdmin;
                 
-                checkbox.onchange = function() {
-                    updateSelection(user, itemIndex, checkbox.checked, true); // Update for local user
-                };
+            //     checkbox.onchange = function() {
+            //         updateSelection(user, itemIndex, checkbox.checked, true); // Update for local user
+            //     };
                     
                 
-                wrapperDiv.appendChild(checkbox);
-                cell.appendChild(wrapperDiv);
-                });
-            });     
+            //     wrapperDiv.appendChild(checkbox);
+            //     cell.appendChild(wrapperDiv);
+            //     });
+            // });     
             if (isAdmin) {
                        
                         makeFieldsEditable(table, items);
@@ -446,14 +439,15 @@
 
 
             
-           
+            if(splits && typeof splits == 'object'){
             // Add rows for each user's split
-            Object.keys(splits).forEach(function(user) {
+            Object.entries(splits).forEach(function([user, totalCost]) {
                 var row = table.insertRow(-1);
                 row.insertCell(0).innerHTML = user;
-                row.insertCell(1).innerHTML = `$${splits[user].toFixed(2)}`;
+                row.insertCell(1).innerHTML = `${totalCost.toFixed(2)}`;
             });
         }
+    }
 
 
 
@@ -469,10 +463,10 @@
             return null; // Return null or handle appropriately if the cookie is not set
         }
 
-        function updateSelection(user, itemIndex, isSelected, isLocalUser = false) {
+        function updateSelection(user, itemIndex, isSelected) {
             var xhr = new XMLHttpRequest();
-            var endpoint = isLocalUser ? '/update_local_user_selection/' : '/update_selection/';
-            xhr.open("POST", endpoint + "{{ session_id }}", true);
+            
+            xhr.open("POST", '/update_selection/' + "{{ session_id }}", true);
             xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
             
             xhr.onreadystatechange = function() {
@@ -483,8 +477,8 @@
 
             var data = "username=" + encodeURIComponent(user) +
                     "&item_index=" + encodeURIComponent(itemIndex) +
-                    "&is_selected=" + encodeURIComponent(isSelected) +
-                    (isLocalUser ? "&is_local_user=true" : "");
+                    "&is_selected=" + encodeURIComponent(isSelected);
+                    
             xhr.send(data);
         }
 

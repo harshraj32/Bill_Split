@@ -36,10 +36,10 @@ def upload_image():
         items_list = df.to_dict('records')
         sessions[session_id] = {
         "admin": None, 
-        "users": {}, 
-        "local_users": {},  # New field for local users
+        "users": {},
         "items": items_list, 
-        "splits": {}
+        "splits": {},
+        "next_user_id":1,
         }
         return redirect(url_for('session', session_id=session_id))
 
@@ -56,40 +56,39 @@ def start_session():
         return redirect(url_for('home'))
     
     items_list = df.to_dict('records')
-    sessions[session_id] = {
-    "admin": None, 
-    "users": {}, 
-    "local_users": {},  # New field for local users
-    "items": items_list, 
-    "splits": {}
-    }
+    
     return redirect(url_for('session', session_id=session_id))
 
 @app.route('/add_local_user/<session_id>', methods=['POST'])
 def add_local_user(session_id):
-    if session_id in sessions:
-        # Check if the current user is the admin
-        user_cookie = request.cookies.get('user_session')
-        if user_cookie and user_cookie.split('_')[0] == sessions[session_id]["admin"]:
-            local_user = request.form.get('local_username')
-            if local_user:
-                # Initialize local_users if not already done
-                if "local_users" not in sessions[session_id]:
-                    sessions[session_id]["local_users"] = {}
-
-                # Add the local user
-                sessions[session_id]["local_users"][local_user] = [0] * len(sessions[session_id]["items"])
-
-                # Emit an event to update all clients
-                socketio.emit('local_user_added', {'session_id': session_id, 'local_user': local_user}, room=session_id)
-                
-                return "Local user added", 200
-            else:
-                return "Invalid local user name", 400
-        else:
-            return "Unauthorized", 403
-    else:
+    if session_id not in sessions:
         return "Session not found", 404
+
+    # Check if the current user is the admin
+    user_cookie = request.cookies.get('user_session')
+    admin_username = user_cookie.split('_')[0] if user_cookie else None
+    if admin_username != sessions[session_id].get("admin"):
+        return "Unauthorized", 403
+
+    local_user = request.form.get('local_username')
+    if not local_user:
+        return "Invalid local user name", 400
+
+    # Add the local user
+    new_user_id = sessions[session_id]["next_user_id"]
+    sessions[session_id]["next_user_id"] += 1
+    sessions[session_id]["users"][local_user] = {
+            "id": new_user_id,
+            "selections": [0] * len(sessions[session_id]["items"]),
+            "is_local": True
+    }
+
+    # Emit an event to update all clients
+    socketio.emit('local_user_added', {'session_id': session_id, 'local_user': local_user}, room=session_id)
+    
+    return "Local user added", 200
+
+
 
 @app.route('/add_item/<session_id>', methods=['POST'])
 def add_item(session_id):
@@ -101,11 +100,10 @@ def add_item(session_id):
         }
         sessions[session_id]["items"].append(new_item)
 
-        # Update each user's and local user's selection list
+        # Update each user's selection list (both regular and local users)
         for user in sessions[session_id]["users"]:
-            sessions[session_id]["users"][user].append(0)  # Add default selection for new item
-        for local_user in sessions[session_id].get("local_users", {}):
-            sessions[session_id]["local_users"][local_user].append(0)
+            sessions[session_id]["users"][user]["selections"].append(0)  # Add default selection for new item
+
 
         # Emit a socket event to update all clients
         socketio.emit('item_added', {'newItem': new_item}, room=session_id)
@@ -122,9 +120,8 @@ def get_session_data(session_id):
         return jsonify({
             "users": session_data["users"],
             "items": session_data["items"],
-            "splits": session_data["splits"],
-            "local_users": session_data.get("local_users", {})  # Default to an empty dict if not present
-        })
+            "splits": session_data["splits"]
+         })
     else:
         return "Session not found", 404
 
@@ -147,18 +144,21 @@ def session(session_id):
 
 def calculate_splits(session_id):
     session_data = sessions[session_id]
-    splits = {user: 0 for user in session_data["users"]}  # Initialize splits for regular users
-    splits.update({user: 0 for user in session_data["local_users"]})  # Initialize splits for local users
+    splits = {}  # Initialize splits
+
 
     for i, item in enumerate(session_data["items"]):
-        selected_users = [user for user, selections in session_data["users"].items() if selections[i] == 1]
-        selected_local_users = [user for user, selections in session_data["local_users"].items() if selections[i] == 1]
-        all_selected_users = selected_users + selected_local_users  # Combine both lists
-        if all_selected_users:
-            cost_per_user = item["Price"] / len(all_selected_users)
-            for user in all_selected_users:
-                splits[user] += cost_per_user
+        # Calculate the number of users who have selected this item
+        num_users_selected = sum(user_data["selections"][i] for user_data in session_data["users"].values())
 
+        if num_users_selected > 0:
+            cost_per_user = item["Price"] / num_users_selected
+            for user, user_data in session_data["users"].items():
+                if user_data["selections"][i] == 1:
+                    splits[user] = splits.get(user, 0) + cost_per_user
+        else:
+            # If no users have selected the item, skip cost distribution for this item
+            continue
     return splits
 
 
@@ -204,8 +204,13 @@ def join_session(session_id):
         if sessions[session_id]["admin"] is None:
             sessions[session_id]["admin"] = username
         if request.method == 'POST':
-            sessions[session_id]["users"][username] = {}
-            sessions[session_id]["users"][username] = [0] * len(sessions[session_id]["items"])
+            new_user_id = sessions[session_id]["next_user_id"]
+            sessions[session_id]["next_user_id"] += 1
+            sessions[session_id]["users"][username] = {
+                "id": new_user_id,
+                "selections": [0] * len(sessions[session_id]["items"]),
+                "is_local": False
+            }
             response = make_response(redirect(url_for('session', session_id=session_id)))
             cookie_value = f"{username}_{session_id}"
             response.set_cookie('user_session', cookie_value)
@@ -233,67 +238,27 @@ def update_selection(session_id):
 
     # Check if the user is a local user or a regular user
     if username in sessions[session_id]["users"]:
-        # Regular user
-        sessions[session_id]["users"][username][item_index] = 1 if is_selected else 0
-    elif "local_users" in sessions[session_id] and username in sessions[session_id]["local_users"]:
-        # Local user
-        sessions[session_id]["local_users"][username][item_index] = 1 if is_selected else 0
+        # Update the selection for the user
+        sessions[session_id]["users"][username]["selections"][item_index] = 1 if is_selected else 0
+
+        # Recalculate splits and emit updates
+        sessions[session_id]["splits"] = calculate_splits(session_id)
+        socketio.emit('update_data', {
+            'splits': sessions[session_id]["splits"],
+            'users': sessions[session_id]["users"],
+            'items': sessions[session_id]["items"]
+        }, room=session_id)
+        
+        # Emit the selection_updated event
+        socketio.emit('selection_updated', {
+            'username': username,
+            'item_index': item_index,
+            'is_selected': is_selected
+        }, room=session_id)
+
+        return "Selection updated", 200
     else:
         return "User not found", 404
-
-    # Recalculate splits and emit updates
-    sessions[session_id]["splits"] = calculate_splits(session_id)
-    socketio.emit('update_data', {
-        'splits': calculate_splits(session_id),
-        'users': sessions[session_id]["users"],
-        'local_users': sessions[session_id]["local_users"],
-        'items': sessions[session_id]["items"]
-    }, room=session_id)
-    
-    socketio.emit('selection_updated', {
-        'username': username,
-        'item_index': item_index,
-        'is_selected': is_selected
-    }, room=session_id)
-
-    return "Selection updated", 200
-    
-@app.route('/update_local_user_selection/<session_id>', methods=['POST'])
-def update_local_user_selection(session_id):
-    if session_id in sessions:
-        # Check if the current user is the admin
-        user_cookie = request.cookies.get('user_session')
-        if user_cookie and user_cookie.split('_')[0] == sessions[session_id]["admin"]:
-            username = request.form.get('username')
-            item_index = int(request.form.get('item_index'))
-            is_selected = request.form.get('is_selected') == 'true'
-
-            # Check if the username exists in local_users
-            if 'local_users' in sessions[session_id] and username in sessions[session_id]["local_users"]:
-                sessions[session_id]["local_users"][username][item_index] = 1 if is_selected else 0
-                print("Inside update local user selection")
-                print(session)
-                # Emit update to all clients in the session
-                socketio.emit('update_data', {
-                    'splits': calculate_splits(session_id),
-                    'users': sessions[session_id]["users"],
-                    'items': sessions[session_id]["items"],
-                    'local_users': sessions[session_id]["local_users"]
-                }, room=session_id)
-
-                socketio.emit('selection_updated', {
-                    'username': username,
-                    'item_index': item_index,
-                    'is_selected': is_selected
-                }, room=session_id)
-
-                return "Local user selection updated", 200
-            else:
-                return "Local user not found", 404
-        else:
-            return "Unauthorized", 403
-    else:
-        return "Session not found", 404
 
 
 
