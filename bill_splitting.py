@@ -177,6 +177,7 @@ def merge_and_calculate_prices(df, discount_df):
     tax_percentage = 9.125 / 100
     df_merged['Tax'] = df_merged.apply(lambda row: row['Discounted Price'] * tax_percentage if row['Tax Status'] == 'A' else 0, axis=1)
     df_merged['Final Price'] = df_merged['Discounted Price'] + df_merged['Tax']
+    df_merged['tax_flag'] = df_merged.apply(lambda row: 1 if row['Tax Status'] == 'A' else 0, axis=1)
     return df_merged
 
 def calculate_totals(df_merged):
@@ -188,41 +189,28 @@ def calculate_totals(df_merged):
 def get_merged_df(user_file_path):
     # file_path = 'bill_split_1.JSON'
 
-    # SUPABASE_URL = 'https://lesrfpiwruzymhfajaex.supabase.co'
-    # SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlc3JmcGl3cnV6eW1oZmFqYWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDMzNzU1MjYsImV4cCI6MjAxODk1MTUyNn0.0IrkR16j2R9nyf8rvo0Xv__UbX9kxW73rjSt7RD2u0g'
-    # BUCKET_NAME = 'buck'
-    # #user_file_path = '/content/drive/Shareddrives/Bill_Split_Datasets/test_image_bill.jpeg'
-    # # Path where the file will be stored in Supabase storage
-    # folder_name = 'bill_receipts'
-    # #user_image = enhance_contrast(user_file_path)
-    # # Upload the file
-    # uploaded_file_url = process_and_upload_image(user_file_path, BUCKET_NAME, folder_name, SUPABASE_URL, SUPABASE_KEY)
-    # '''print(f"Uploaded file URL: {uploaded_file_url}")'''
-    # response = upload_file_to_veryfi(uploaded_file_url)
-    # #print(response)
-    # document_id = response['id']  # Assuming the response contains an 'id'
-    # # Retrieve processed document
-    # processed_data = get_processed_document(document_id)
-    # text_fields = preprocess_text_fields(processed_data)
-    # df = extract_data_from_text(text_fields)
-    # df, discount_df = process_discounts(df)
-    # df_merged = merge_and_calculate_prices(df, discount_df)
-    # sub_total, tax_total, total_price = calculate_totals(df_merged)
-    data = {
-    "ID": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    "Name": ["Apples", "Bread", "Milk", "Eggs", "Cheese", "Tomatoes", "Bananas", "Oranges", "Chicken", "Fish"],
-    "Price": [2.5, 3.0, 1.75, 2.2, 3.5, 1.2, 0.5, 1.5, 5.0, 6.0],
-    "Final Price": [2.0, 2.5, 1.5, 2.0, 3.0, 1.0, 0.4, 1.3, 4.5, 5.5]
-}
+    SUPABASE_URL = 'https://lesrfpiwruzymhfajaex.supabase.co'
+    SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlc3JmcGl3cnV6eW1oZmFqYWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDMzNzU1MjYsImV4cCI6MjAxODk1MTUyNn0.0IrkR16j2R9nyf8rvo0Xv__UbX9kxW73rjSt7RD2u0g'
+    BUCKET_NAME = 'buck'
+    #user_file_path = '/content/drive/Shareddrives/Bill_Split_Datasets/test_image_bill.jpeg'
+    # Path where the file will be stored in Supabase storage
+    folder_name = 'bill_receipts'
+    #user_image = enhance_contrast(user_file_path)
+    # Upload the file
+    uploaded_file_url = process_and_upload_image(user_file_path, BUCKET_NAME, folder_name, SUPABASE_URL, SUPABASE_KEY)
+    '''print(f"Uploaded file URL: {uploaded_file_url}")'''
+    response = upload_file_to_veryfi(uploaded_file_url)
+    #print(response)
+    document_id = response['id']  # Assuming the response contains an 'id'
+    # Retrieve processed document
+    processed_data = get_processed_document(document_id)
+    text_fields = preprocess_text_fields(processed_data)
+    df = extract_data_from_text(text_fields)
+    df, discount_df = process_discounts(df)
+    df_merged = merge_and_calculate_prices(df, discount_df)
+    sub_total, tax_total, total_price = calculate_totals(df_merged)
     
-    data2 = {
-    "ID": [1],
-    "Name": ["None"],
-    "Price": [0],
-    "Final Price": [0]
-    }
 
-    return pd.DataFrame(data2)
     '''print("Sub Total:", sub_total)
     print("Tax Total:", tax_total)
     print("Total Price:", total_price)'''

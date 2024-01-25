@@ -58,10 +58,11 @@
                         var users = responseData.users;
                         var items = responseData.items;
                         var splits = responseData.splits;
+                        var taxPercentage = responseData.tax_percentage;
                         console.log("items in fetchSessionDataAndBuildTable", items);
                         
                        
-                        buildTable(users, items, splits);
+                        buildTable(users, items, splits, taxPercentage);
                     } else {
                         console.error("Failed to fetch session data:", this.statusText);
                         // Handle the error appropriately
@@ -138,7 +139,7 @@
         // Update the users and splits data
         console.log("Received update_data event in socked on update_data:", data);
 
-        buildTable(data.users, data.items, data.splits);
+        buildTable(data.users, data.items, data.splits, data.tax_percentage);
     });
     
     socket.on('selection_updated', function(data) {
@@ -175,7 +176,7 @@
             console.log(`Updating checkbox for ${username}, (ID: ${userId}), item ${itemIndex}: ${isSelected}`);
         }
 
-        function buildTable(users, items, splits) {
+        function buildTable(users, items, splits, taxPercentage) {
             // Identify the current user and admin status
            
 
@@ -198,6 +199,21 @@
             
             populateSplitsTable(splitsTable, splits);
             
+            // Add tax percentage input for admin
+            if (isAdmin) {
+                var taxInput = document.getElementById('taxInput');
+                if (taxInput) {
+                    taxInput.value = taxPercentage; // Set the initial value
+
+                    taxInput.onchange = function() {
+                        updateTaxPercentage("{{ session_id }}", taxInput.value);
+                    };
+                } else {
+                    console.error('Tax input field not found');
+                }
+
+            }
+
 
             // Add admin controls if the current user is an admin
             if (isAdmin) {
@@ -206,7 +222,7 @@
         }
 
 
-        function populateItemSelectionTable(table, items, users, currentUser, isAdmin) {
+        function populateItemSelectionTable(table, items, users, currentUser, isAdmin, taxPercentage) {
             if (!users) {
                 console.error('Users data is undefined or null');
                 return;
@@ -237,7 +253,7 @@
             var headerRow = header.insertRow(0);
             headerRow.insertCell(0).innerHTML = 'Item'; // First column for item names
             headerRow.insertCell(1).innerHTML = 'Price'; // Second column for prices
-            
+            headerRow.insertCell(2).innerHTML = 'Tax Flag';  // Third column for tax flag
              // Sort users by ID
              const sortedUsers = Object.entries(users).sort((a, b) => a[1].id - b[1].id);
 
@@ -259,6 +275,29 @@
                 row.insertCell().innerHTML = item.Name; // Item name
                 var priceCell = row.insertCell();       // Price cell
                 priceCell.innerHTML = item.Price; 
+            
+
+                // Tax flag cell
+                
+                var taxFlagCell = row.insertCell();
+                var wrapperDivFlag = document.createElement('div');
+                wrapperDivFlag.className = 'checkbox-wrapper-13'; 
+                var taxFlagCheckbox = document.createElement('input');
+                taxFlagCheckbox.type = 'checkbox';
+                taxFlagCheckbox.className = 'checkbox-hover'; 
+                taxFlagCheckbox.checked = item.tax_flag === 1;
+                taxFlagCheckbox.disabled = !isAdmin;
+                taxFlagCheckbox.onchange = function() {
+                    console.log("Item ID:", item.ID);
+                    updateTaxFlag("{{ session_id }}", item.ID, taxFlagCheckbox.checked);
+                };
+                wrapperDivFlag.appendChild(taxFlagCheckbox);
+                taxFlagCell.appendChild(wrapperDivFlag);
+
+
+
+
+
                 // Add checkboxes for each user
             sortedUsers.forEach(function([username, userData]) {
                 var cell = row.insertCell();
@@ -391,7 +430,43 @@
                 };
             }
             // Additional admin controls can be added here
+
+              // Additional admin controls can be added here
+            /*
+            var taxInput = document.createElement('input');
+            taxInput.type = 'number';
+            taxInput.id = 'taxPercentageInput';
+            taxInput.value = 9.125;  // Default tax percentage
+            taxInput.step = '0.01';
+            taxInput.onchange = function() {
+                updateTaxPercentage(sessionId, this.value);
+            };
+            container.appendChild(taxInput);
+
+            */
+
         }
+
+        function updateTaxPercentage(sessionId, taxPercentage) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", `/update_tax_percentage/${sessionId}`, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("Tax percentage updated successfully");
+                    fetchSessionDataAndBuildTable(sessionId);
+                }
+            };
+            xhr.send(`taxPercentage=${encodeURIComponent(taxPercentage)}`);
+        }
+
+        // Update the event listener for tax percentage update
+        socket.on('tax_percentage_updated', function(data) {
+            if (data.session_id === "{{ session_id }}") {
+                fetchSessionDataAndBuildTable("{{ session_id }}");
+            }
+        });
+
 
         function addNewItem(sessionId) {
             var xhr = new XMLHttpRequest();
@@ -482,6 +557,24 @@
             xhr.send(data);
         }
 
+        function updateTaxFlag(sessionid, itemId, newTaxFlag) {
+            console.log("Inside update Tax Flag: "+ itemId);
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", '/update_item_tax_flag', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+            xhr.onreadystatechange = function() {
+                if (this.readyState == XMLHttpRequest.DONE && this.status == 200) {
+                    console.log("Tax flag updated successfully for item " + itemId);
+                    fetchSessionDataAndBuildTable("{{ session_id }}");
+                }
+            };
+
+            var data = "session_id=" + encodeURIComponent("{{ session_id }}") +
+                    "&itemId=" + encodeURIComponent(itemId) + // Make sure itemId is an integer
+                    "&newTaxFlag=" + encodeURIComponent(newTaxFlag ? 1 : 0);
+            xhr.send(data);
+        }
 
 
 
@@ -520,11 +613,18 @@
      <div class="row" style="margin: 20px;">
         <div class="col-lg-8">
         <div class="header-with-buttons">
-            <h4 style="color: white;">Grocery Bill</h4>
+            <div class="col">
+                <h4 style="color: white;">Grocery Bill</h4>
+                <div class="mt-2"> <!-- Bootstrap class for margin-top -->
+                <div style="color: white;">Tax percentage:  <input type="number" id="taxInput" class="form-control" style=" background-color: #2d2d2d; border: none; color: #fff; width: auto; display: inline-block;" ></div>
+                </div>
+            </div>
+            
             <div class="buttons-container">
                 <button type="button" id="addUserBtn" class="btn btn-outline-primary">Add User</button>
                 <button type="button" id="addItemBtn" class="btn btn-outline-secondary">Add Item</button>
             </div>
+
         </div>
      
         <div class="table-responsive">

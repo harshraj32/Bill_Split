@@ -39,11 +39,53 @@ def upload_image():
         "users": {},
         "items": items_list, 
         "splits": {},
-        "next_user_id":1,
+        "tax_percentage": 9.125,  # Default tax percentage
+        "next_user_id":1
+
         }
+        # Calculate initial prices including tax
+    #calculate_prices_with_tax(session_id)
         return redirect(url_for('session', session_id=session_id))
 
+def calculate_prices_with_tax(session_id):
+    session_data = sessions[session_id]
+    tax_percentage = session_data["tax_percentage"]
+    for item in session_data["items"]:
+        if item["tax_flag"] == 1:
+            item["Price"] += item["Price"] * (tax_percentage / 100)
 
+
+@app.route('/update_tax_percentage/<session_id>', methods=['POST'])
+def update_tax_percentage(session_id):
+    if session_id not in sessions:
+        return "Session not found", 404
+
+    new_tax_percentage = float(request.form.get('taxPercentage'))
+
+    # Check if the current user is the admin
+    user_cookie = request.cookies.get('user_session')
+    admin_username = user_cookie.split('_')[0] if user_cookie else None
+    if admin_username != sessions[session_id].get("admin"):
+        return "Unauthorized", 403
+
+    # Update tax percentage in session data
+    sessions[session_id]['tax_percentage'] = new_tax_percentage
+
+    # Recalculate prices including tax for all items
+    #calculate_prices_with_tax(session_id)
+
+    # Recalculate splits with the updated tax percentage
+    sessions[session_id]["splits"] = calculate_splits(session_id)
+
+    # Broadcast the update to all clients in the session
+    socketio.emit('update_data', {
+        'splits': sessions[session_id]["splits"],
+        'users': sessions[session_id]["users"],
+        'items': sessions[session_id]["items"],
+        'tax_percentage': sessions[session_id]['tax_percentage']
+    }, room=session_id)
+
+    return "Tax percentage updated", 200
 
 @app.route('/start_session', methods=['POST'])
 def start_session():
@@ -93,17 +135,21 @@ def add_local_user(session_id):
 @app.route('/add_item/<session_id>', methods=['POST'])
 def add_item(session_id):
     if session_id in sessions and sessions[session_id]["admin"] == request.cookies.get('user_session').split('_')[0]:
+        # Default values for new item, including tax_flag set to 0
         new_item = {
             "ID": len(sessions[session_id]["items"]) + 1,  # Generate a new ID
             "Name": '',  # Default name
-            "Price": 0.0  # Default price
+            "Price": 0.0,  # Default price
+            "tax_flag": 0  # Default tax_flag
         }
         sessions[session_id]["items"].append(new_item)
 
         # Update each user's selection list (both regular and local users)
         for user in sessions[session_id]["users"]:
             sessions[session_id]["users"][user]["selections"].append(0)  # Add default selection for new item
-
+        
+        # Recalculate prices including tax for all items
+        #calculate_prices_with_tax(session_id)
 
         # Emit a socket event to update all clients
         socketio.emit('item_added', {'newItem': new_item}, room=session_id)
@@ -120,7 +166,8 @@ def get_session_data(session_id):
         return jsonify({
             "users": session_data["users"],
             "items": session_data["items"],
-            "splits": session_data["splits"]
+            "splits": session_data["splits"],
+            "tax_percentage": session_data["tax_percentage"]
          })
     else:
         return "Session not found", 404
@@ -145,20 +192,23 @@ def session(session_id):
 def calculate_splits(session_id):
     session_data = sessions[session_id]
     splits = {}  # Initialize splits
-
+    tax_percentage = session_data.get("tax_percentage", 9.125) / 100
 
     for i, item in enumerate(session_data["items"]):
+
+        item_cost = item["Price"]
+        if item.get("tax_flag", 0) == 1:
+            item_cost += item_cost * tax_percentage
+
         # Calculate the number of users who have selected this item
         num_users_selected = sum(user_data["selections"][i] for user_data in session_data["users"].values())
 
         if num_users_selected > 0:
-            cost_per_user = item["Price"] / num_users_selected
+            cost_per_user = item_cost / num_users_selected
             for user, user_data in session_data["users"].items():
                 if user_data["selections"][i] == 1:
                     splits[user] = splits.get(user, 0) + cost_per_user
-        else:
-            # If no users have selected the item, skip cost distribution for this item
-            continue
+        
     return splits
 
 
@@ -178,6 +228,30 @@ def update_item_name():
         return "Item name updated", 200
     return "Unauthorized or session not found", 403
 
+
+@app.route('/update_item_tax_flag', methods=['POST'])
+def update_item_tax_flag():
+    session_id = request.form.get('session_id')
+    item_id = int(request.form.get('itemId'))
+    new_tax_flag = int(request.form.get('newTaxFlag'))  # Expecting 0 or 1
+
+    if session_id in sessions and sessions[session_id]["admin"] == request.cookies.get('user_session').split('_')[0]:
+        for item in sessions[session_id]["items"]:
+            if item["ID"] == item_id:
+                item["tax_flag"] = new_tax_flag
+                break
+        # Emit a socket event to update all clients
+        socketio.emit('item_tax_flag_updated', {'itemId': item_id, 'newTaxFlag': new_tax_flag}, room=session_id)
+        sessions[session_id]["splits"] = calculate_splits(session_id)
+
+        socketio.emit('update_data', {
+            'splits': sessions[session_id]["splits"],
+            'users': sessions[session_id]["users"],
+            'items': sessions[session_id]["items"]
+        }, room=session_id)
+
+        return "Item tax flag updated", 200
+    return "Unauthorized or session not found", 403
 
 @app.route('/update_item_price', methods=['POST'])
 def update_item_price():
@@ -259,6 +333,24 @@ def update_selection(session_id):
         return "Selection updated", 200
     else:
         return "User not found", 404
+
+
+@app.route('/update_item_tax', methods=['POST'])
+def update_item_tax():
+    session_id = request.form.get('session_id')
+    item_id = int(request.form.get('itemId'))
+    new_tax_flag = request.form.get('newTaxFlag') == 'true'
+
+    if session_id in sessions and sessions[session_id]["admin"] == request.cookies.get('user_session').split('_')[0]:
+        for item in sessions[session_id]["items"]:
+            if item["ID"] == item_id:
+                item["tax_flag"] = new_tax_flag
+                break
+        socketio.emit('item_tax_updated', {'itemId': item_id, 'newTaxFlag': new_tax_flag}, room=session_id)
+        return "Item tax flag updated", 200
+    return "Unauthorized or session not found", 403
+
+
 
 
 
