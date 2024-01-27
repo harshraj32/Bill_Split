@@ -247,7 +247,8 @@ def update_item_tax_flag():
         socketio.emit('update_data', {
             'splits': sessions[session_id]["splits"],
             'users': sessions[session_id]["users"],
-            'items': sessions[session_id]["items"]
+            'items': sessions[session_id]["items"],
+            "tax_percentage": sessions[session_id]["tax_percentage"]
         }, room=session_id)
 
         return "Item tax flag updated", 200
@@ -320,7 +321,8 @@ def update_selection(session_id):
         socketio.emit('update_data', {
             'splits': sessions[session_id]["splits"],
             'users': sessions[session_id]["users"],
-            'items': sessions[session_id]["items"]
+            'items': sessions[session_id]["items"],
+            "tax_percentage": sessions[session_id]["tax_percentage"]
         }, room=session_id)
         
         # Emit the selection_updated event

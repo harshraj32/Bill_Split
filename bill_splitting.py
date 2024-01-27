@@ -188,7 +188,7 @@ def calculate_totals(df_merged):
 
 def get_merged_df(user_file_path):
     # file_path = 'bill_split_1.JSON'
-
+    '''
     SUPABASE_URL = 'https://lesrfpiwruzymhfajaex.supabase.co'
     SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlc3JmcGl3cnV6eW1oZmFqYWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDMzNzU1MjYsImV4cCI6MjAxODk1MTUyNn0.0IrkR16j2R9nyf8rvo0Xv__UbX9kxW73rjSt7RD2u0g'
     BUCKET_NAME = 'buck'
@@ -198,7 +198,7 @@ def get_merged_df(user_file_path):
     #user_image = enhance_contrast(user_file_path)
     # Upload the file
     uploaded_file_url = process_and_upload_image(user_file_path, BUCKET_NAME, folder_name, SUPABASE_URL, SUPABASE_KEY)
-    '''print(f"Uploaded file URL: {uploaded_file_url}")'''
+    #print(f"Uploaded file URL: {uploaded_file_url}")
     response = upload_file_to_veryfi(uploaded_file_url)
     #print(response)
     document_id = response['id']  # Assuming the response contains an 'id'
@@ -211,11 +211,23 @@ def get_merged_df(user_file_path):
     sub_total, tax_total, total_price = calculate_totals(df_merged)
     
 
-    '''print("Sub Total:", sub_total)
-    print("Tax Total:", tax_total)
-    print("Total Price:", total_price)'''
+    #print("Sub Total:", sub_total)
+    #print("Tax Total:", tax_total)
+    #print("Total Price:", total_price)
+    
+
     return df_merged
     
+    '''
+    data = {
+    "ID": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "Name": ["Apples", "Bread", "Milk", "Eggs", "Cheese", "Tomatoes", "Bananas", "Oranges", "Chicken", "Fish"],
+    "Price": [2.5, 3.0, 1.75, 2.2, 3.5, 1.2, 0.5, 1.5, 5.0, 6.0],
+    "tax_flag": [0,1,1,1,0,0,1,1,0,1]
+    }
+    return pd.DataFrame(data)
+
+
 
 if __name__ == "__main__":
     get_merged_df('users/receipts/example.jpeg')
