@@ -519,7 +519,7 @@
             Object.entries(splits).forEach(function([user, totalCost]) {
                 var row = table.insertRow(-1);
                 row.insertCell(0).innerHTML = user;
-                row.insertCell(1).innerHTML = `${totalCost.toFixed(2)}`;
+                row.insertCell(1).innerHTML = `${totalCost.toFixed(3)}`;
             });
         }
     }
@@ -935,6 +935,13 @@
      /* Or your desired background color */
     z-index: 1;
 }
+/*
+ .table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #1e1e1e; 
+    z-index: 10; 
+} */
 
 .table tbody th:first-child{
     background-color: #1e1e1e;

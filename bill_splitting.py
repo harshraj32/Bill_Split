@@ -23,7 +23,7 @@ def enhance_contrast(image_path):
     
         # Enhance the contrast
     #enhancer = ImageEnhance.Contrast(image_path).enhance(2.0)
-    #high_contrast_img = enhancer.enhance(2.0)  # The factor 2.0 increases the contrast
+    #high_contrast_img = enhancer.enhance(2.0)  # The factor 2.0 increases the conmenttrast
     #high_contrast_img = cv2_enhance_contrast(image_path, 2.0)
     return 'high'
     
@@ -187,8 +187,8 @@ def calculate_totals(df_merged):
     return sub_total, tax_total, total_price
 
 def get_merged_df(user_file_path):
-    # file_path = 'bill_split_1.JSON'
-    '''
+    file_path = 'bill_split_1.JSON'
+    
     SUPABASE_URL = 'https://lesrfpiwruzymhfajaex.supabase.co'
     SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlc3JmcGl3cnV6eW1oZmFqYWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDMzNzU1MjYsImV4cCI6MjAxODk1MTUyNn0.0IrkR16j2R9nyf8rvo0Xv__UbX9kxW73rjSt7RD2u0g'
     BUCKET_NAME = 'buck'
@@ -214,18 +214,28 @@ def get_merged_df(user_file_path):
     #print("Sub Total:", sub_total)
     #print("Tax Total:", tax_total)
     #print("Total Price:", total_price)
-    
+    df_final = df_merged[['ID', 'Discounted Price', 'tax_flag', 'Name']]
 
-    return df_merged
+# Renaming 'Discounted Price' to 'Price'
+    df_final = df_final.rename(columns={'Discounted Price': 'Price'})
+
+    serial_numbers = range(1, len(df_final) + 1)
+
+# Replacing 'ID' column with the serial numbers
+    df_final['ID'] = serial_numbers
+
+
+
+    return df_final
     
-    '''
-    data = {
-    "ID": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    "Name": ["Apples", "Bread", "Milk", "Eggs", "Cheese", "Tomatoes", "Bananas", "Oranges", "Chicken", "Fish"],
-    "Price": [2.5, 3.0, 1.75, 2.2, 3.5, 1.2, 0.5, 1.5, 5.0, 6.0],
-    "tax_flag": [0,1,1,1,0,0,1,1,0,1]
-    }
-    return pd.DataFrame(data)
+    
+    # data = {
+    # "ID": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    # "Name": ["Apples", "Bread", "Milk", "Eggs", "Cheese", "Tomatoes", "Bananas", "Oranges", "Chicken", "Fish"],
+    # "Price": [2.5, 3.0, 1.75, 2.2, 3.5, 1.2, 0.5, 1.5, 5.0, 6.0],
+    # "tax_flag": [0,1,1,1,0,0,1,1,0,1]
+    # }
+    # return pd.DataFrame(data)
 
 
 
